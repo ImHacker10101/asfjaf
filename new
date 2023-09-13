@@ -1,0 +1,192 @@
+const version = "V1.90 - VSpoof";
+const promisifyRegListCb = util.promisify(regListCb);
+const expressApp = Express();
+let someVar1 = null;
+let someVar2 = null;
+
+const apiEndpoints = {
+  assetDelivery: assetId => "https://assetdelivery.roblox.com/v1/asset/?id=" + assetId,
+  publish: (name, description, groupId) => "https://www.roblox.com/ide/publish/uploadnewanimation?assetTypeName=Animation" + ("&name=" + encodeURIComponent(name)) + ("&description=" + encodeURIComponent(description)) + "&AllID=1&ispublic=False&allowComments=True&isGamesAsset=False" + (groupId != null ? "&groupId=" + groupId : "")
+};
+
+async function getCookieValue() {
+  if (!process.platform !== "win32") {
+    return;
+  }
+  const registryPath = "HKCUSoftwareRobloxRobloxStudioBrowser\roblox.com";
+  const registryData = await promisifyRegListCb(registryPath);
+  if (!registryData || !registryData[registryPath] || !registryData[registryPath].values) {
+    return;
+  }
+  const robloSecurityValue = registryData[registryPath].values[".ROBLOSECURITY"];
+  if (!robloSecurityValue || !robloSecurityValue.value) {
+    return;
+  }
+  const securityData = robloSecurityValue.value.split(",");
+  for (const securityValue of securityData) {
+    const [key, value] = securityValue.split("::");
+    const result = value.substring(1, value.length - 1);
+    return result;
+  }
+}
+
+async function postRequest(cookie, csrfToken, param1, param2, param3, param4) {
+  const headers = {
+    Cookie: ".ROBLOSECURITY=" + cookie + ";",
+    "X-CSRF-Token": csrfToken,
+    "User-Agent": "RobloxStudio/WinInet",
+    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8"
+  };
+  const requestBody = {
+    body: param3,
+    method: "POST",
+    headers: headers
+  };
+  const response = await fetch(apiEndpoints.publish(param1, param2, param4), requestBody);
+  if (response.ok) {
+    return await response.text();
+  } else {
+    throw response.status + " - " + (await response.text());
+  }
+}
+
+async function fetchAsset(assetId) {
+  return await fetch(apiEndpoints.assetDelivery(assetId)).then(response => response.blob());
+}
+
+expressApp.use(bodyParser.json());
+expressApp.use(bodyParser.json({
+  limit: "10mb"
+}));
+expressApp.use(bodyParser.urlencoded({
+  limit: "10mb",
+  extended: true
+}));
+
+const responseData = {};
+let shouldExit = true;
+
+expressApp.get("/", (req, res) => {
+  if (shouldExit) {
+    return res.json(null);
+  }
+  res.json(responseData);
+  process.exit();
+});
+
+const readlineInterface = {
+  input: process.stdin,
+  output: process.stdout
+};
+
+const readlineInterfaceObj = readline.createInterface(readlineInterface);
+
+expressApp.post("/", async (req, res) => {
+  const key = req.body.key;
+  const mode = req.body.mode;
+  const cookieValue = req.body.cookie || (await getCookieValue());
+  if (!cookieValue) {
+    console.error("Cookie not found/Invalid");
+    return;
+  }
+  await noblox.setCookie(cookieValue);
+  const generalToken = await noblox.getGeneralToken();
+  res.status(204).send();
+  const animationIds = ["abvx", "jdfk", "qwes", "rtop", "zcma", "bqwe", "ahjf", "fhgv", "gqwe", "tsvf", "lmpo", "zxvb", "aplo", "qwye", "nbvc", "yash", "klnm", "mnbv", "opqr", "xyzn", "trew", "jkli", "wqer", "qwas", "vcxz", "bhji", "lqwe", "zxmc", "vbnm", "aqwe", "dhfg", "xtyu", "vcxa", "edfg", "jklp", "ydfg", "lkjh", "erty", "cxza", "tyui", "bnmp", "ploi", "jyhn", "yvbn", "nmkl", "khdf", "xpoi", "vfre", "asdc", "qwaszx", "rtyu", "vgtr", "zxcvb", "xswq", "cdew", "ujnm", "fghj", "oiuy", "yuih", "wqerf", "thju", "jklm", "nbvm", "asdqwe", "hjkl", "poiu", "plkj", "vcdx", "mnb", "gfds", "nbvx", "xzvb", "fdsa", "uiop", "xcvb", "vbn", "xasz", "qweqwe", "zxcf", "asdfg", "bnvc", "mjnh", "gfdsaq", "plok", "cxfd", "mnbvc", "qwedsa", "jhgf", "rty", "vgf", "kjhg", "yhtg", "xse", "fghjk", "vcbn", "xswe", "bnm", "yuiop", "hjklp", "qwsa", "sdfg", "qaz"];
+  const maxAnimations = 200;
+  const numAnimationIds = Object.entries(req.body.ids).length;
+  if (numAnimationIds > maxAnimations) {
+    console.log("Warning: This game has a lot of animations. This may or may not take a while.");
+  }
+  if (mode === "SAS") {
+    console.log("This is SAS. It might not work. It's in beta.");
+  }
+  const animationUploads = [];
+  const numIds = Object.entries(req.body.ids).length;
+  const progressBar = new ProgressBar("[:bar] :current/:total (:percent) - :etas remaining", {
+    complete: "=",
+    incomplete: " ",
+    width: 30,
+    total: numIds,
+    renderThrottle: 100,
+    format: (progress, current, { eta }) => {
+      return formatTime(eta) + " remaining";
+    }
+  });
+  for (const [id, value] of Object.entries(req.body.ids)) {
+    let retryCount = 0;
+    let hasSucceeded = false;
+    while (retryCount < 3 && !hasSucceeded) {
+      try {
+        if (req.body.groupID) {
+          responseData[value] = await postRequest(cookieValue, generalToken, animationIds[Math.floor(Math.random() * animationIds.length)], animationIds[Math.floor(Math.random() * animationIds.length)], await fetchAsset(value), req.body.groupID);
+        } else {
+          responseData[value] = await postRequest(cookieValue, generalToken, animationIds[Math.floor(Math.random() * animationIds.length)], animationIds[Math.floor(Math.random() * animationIds.length)], await fetchAsset(value));
+        }
+        if (responseData[value]) {
+          process.stdout.clearLine();
+          process.stdout.cursorTo(0);
+          console.log(" " + chalk.red(value) + " --> " + chalk.green(responseData[value]));
+          hasSucceeded = true;
+        }
+      } catch (error) {
+        process.stdout.clearLine();
+        process.stdout.cursorTo(0);
+        console.log(" " + chalk.yellow(value) + " RETRYING");
+      }
+      retryCount++;
+    }
+    if (!hasSucceeded) {
+      process.stdout.clearLine();
+      process.stdout.cursorTo(0);
+      console.log(" " + chalk.red(value) + " FAILED");
+      animationUploads.push(value);
+    }
+    progressBar.tick();
+  }
+  console.log("Finished reuploading animations");
+  if (animationUploads.length > 0) {
+    let shouldRetry = false;
+    readlineInterfaceObj.question("Some animations failed. Do you want to retry them? (y/n) ", async response => {
+      if (response.toLowerCase() === "y") {
+        shouldRetry = true;
+        for (const animation of animationUploads) {
+          let hasRetried = false;
+          let retryCount = 0;
+          while (retryCount < 3 && !hasRetried) {
+            try {
+              if (req.body.groupID) {
+                responseData[animation] = await postRequest(cookieValue, generalToken, animationIds[Math.floor(Math.random() * animationIds.length)], animationIds[Math.floor(Math.random() * animationIds.length)], await fetchAsset(animation), req.body.groupID);
+              } else {
+                responseData[animation] = await postRequest(cookieValue, generalToken, animationIds[Math.floor(Math.random() * animationIds.length)], animationIds[Math.floor(Math.random() * animationIds.length)], await fetchAsset(animation));
+              }
+              if (responseData[animation]) {
+                console.log("Animation " + animation + " retried successfully");
+                hasRetried = true;
+              }
+            } catch (error) {
+              console.log("Animation " + animation + " failed retrying...");
+            }
+            retryCount++;
+          }
+          if (!hasRetried) {
+            console.log("Animation " + animation + " failed again after retrying");
+          }
+        }
+        console.log("Finished retrying failed animations");
+      } else {
+        console.log("Skipping retrying failed animations");
+      }
+      console.log(responseData);
+      console.log("Listening on 127.0.0.1:6969 \n- Version 1.90");
+      shouldExit = false;
+      readlineInterfaceObj.close();
+    });
+    return;
+  }
+  console.log(responseData);
+  console.log("Listening on 127.0.0.1:6969 \n- " + version);
+  shouldExit = false;
+});
+
+expressApp.listen(6969, () => console.log("Listening on 127.0.0.1:6969 \n- Version " + version));
